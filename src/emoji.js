@@ -6,8 +6,13 @@ export const createEmojiRenderer = (canvas) => {
 
   const state = {
     particles: [],
+    particlePool: [],
+    pendingEmojis: [],
+    pendingIndex: 0,
     animation: null,
-    lastFrame: 0
+    lastFrame: 0,
+    width: window.innerWidth,
+    height: window.innerHeight
   };
 
   const resize = () => {
@@ -19,6 +24,8 @@ export const createEmojiRenderer = (canvas) => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textBaseline = "bottom";
     ctx.textAlign = "center";
+    state.width = window.innerWidth;
+    state.height = window.innerHeight;
   };
 
   const getEmojiSprite = (emoji, size) => {
@@ -44,27 +51,70 @@ export const createEmojiRenderer = (canvas) => {
     return sprite;
   };
 
+  const getEmojiSprites = (emoji) => {
+    const key = `${emoji}:sprites`;
+    const cached = emojiCache.get(key);
+    if (cached) return cached;
+
+    const sprites = EMOJI_SIZES.map((size) => getEmojiSprite(emoji, size));
+    emojiCache.set(key, sprites);
+    return sprites;
+  };
+
+  const enqueue = (emoji) => {
+    state.pendingEmojis.push(emoji);
+    if (!state.animation) {
+      state.lastFrame = 0;
+      state.animation = requestAnimationFrame(render);
+    }
+  };
+
+  const spawnParticle = (emoji) => {
+    const x = Math.round(state.width * (0.1 + Math.random() * 0.8));
+    const y = state.height - 90;
+    const particle = state.particlePool.pop() || {};
+    particle.emoji = emoji;
+    particle.x = x;
+    particle.y = y;
+    particle.vy = -120 - Math.random() * 80;
+    particle.sprites = getEmojiSprites(emoji);
+    particle.age = 0;
+    particle.life = 3500 + Math.random() * 800;
+    particle.lifeInv = 1 / particle.life;
+    state.particles.push(particle);
+  };
+
   const render = (timestamp) => {
     if (!state.lastFrame) state.lastFrame = timestamp;
     const elapsed = timestamp - state.lastFrame;
-    if (elapsed < 33) {
+    const particleCount = state.particles.length;
+    const frameBudget = particleCount > 160 ? 66 : particleCount > 80 ? 50 : 33;
+    if (elapsed < frameBudget) {
       state.animation = requestAnimationFrame(render);
       return;
     }
     const delta = elapsed / 1000;
     state.lastFrame = timestamp;
 
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, state.width, state.height);
+
+    while (state.pendingIndex < state.pendingEmojis.length) {
+      spawnParticle(state.pendingEmojis[state.pendingIndex]);
+      state.pendingIndex += 1;
+    }
+    if (state.pendingIndex > 0) {
+      state.pendingEmojis.length = 0;
+      state.pendingIndex = 0;
+    }
 
     let writeIndex = 0;
     for (let i = 0; i < state.particles.length; i += 1) {
       const particle = state.particles[i];
       particle.age += delta * 1000;
       particle.y += particle.vy * delta;
-      const progress = particle.age / particle.life;
+      const progress = particle.age * particle.lifeInv;
       if (progress >= 1) {
+        state.particlePool.push(particle);
         continue;
       }
 
@@ -97,25 +147,7 @@ export const createEmojiRenderer = (canvas) => {
   };
 
   const launch = (emoji) => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const x = Math.round(width * (0.1 + Math.random() * 0.8));
-    const y = height - 90;
-    const sprites = EMOJI_SIZES.map((size) => getEmojiSprite(emoji, size));
-    state.particles.push({
-      emoji,
-      x,
-      y,
-      vy: -120 - Math.random() * 80,
-      sprites,
-      age: 0,
-      life: 3500 + Math.random() * 800
-    });
-
-    if (!state.animation) {
-      state.lastFrame = 0;
-      state.animation = requestAnimationFrame(render);
-    }
+    enqueue(emoji);
   };
 
   const handleVisibility = (hidden) => {
