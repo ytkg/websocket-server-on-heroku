@@ -126,12 +126,68 @@
         box-shadow: 0 12px 20px rgba(15, 23, 42, 0.08);
       }
 
+      .message.superchat {
+        border: 2px solid rgba(15, 23, 42, 0.12);
+        box-shadow: 0 18px 28px rgba(15, 23, 42, 0.18);
+      }
+
+      .message.superchat[data-band="100"] {
+        background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      }
+
+      .message.superchat[data-band="200"] {
+        background: linear-gradient(135deg, #ecfeff, #cffafe);
+      }
+
+      .message.superchat[data-band="500"] {
+        background: linear-gradient(135deg, #ecfccb, #d9f99d);
+      }
+
+      .message.superchat[data-band="1000"] {
+        background: linear-gradient(135deg, #fef9c3, #fef08a);
+      }
+
+      .message.superchat[data-band="2000"] {
+        background: linear-gradient(135deg, #ffedd5, #fed7aa);
+      }
+
+      .message.superchat[data-band="5000"] {
+        background: linear-gradient(135deg, #fce7f3, #fbcfe8);
+      }
+
+      .message.superchat[data-band="10000"],
+      .message.superchat[data-band="20000"],
+      .message.superchat[data-band="30000"],
+      .message.superchat[data-band="40000"],
+      .message.superchat[data-band="50000"] {
+        background: linear-gradient(135deg, #fee2e2, #fecaca);
+      }
+
       .message-header {
         display: flex;
         justify-content: space-between;
         font-size: 13px;
         color: rgba(15, 23, 42, 0.6);
         margin-bottom: 6px;
+      }
+
+      .message-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: rgba(15, 23, 42, 0.6);
+      }
+
+      .superchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "Spline Sans Mono", monospace;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
       }
 
       .message strong {
@@ -235,24 +291,87 @@
         return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       };
 
+      const parseSuperchatText = (rawText) => {
+        const text = String(rawText);
+        const bracketMatch = text.match(/^\[SC:(\d+)\]\s*/);
+        const slashMatch = text.match(/^\/sc(\d+)\s+/i);
+        const match = bracketMatch || slashMatch;
+        if (!match) {
+          return { text, superchat: null };
+        }
+
+        const amount = Number(match[1]);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return { text, superchat: null };
+        }
+
+        const band = amount >= 50000
+          ? "50000"
+          : amount >= 40000
+            ? "40000"
+            : amount >= 30000
+              ? "30000"
+              : amount >= 20000
+                ? "20000"
+                : amount >= 10000
+                  ? "10000"
+                  : amount >= 5000
+                    ? "5000"
+                    : amount >= 2000
+                      ? "2000"
+                      : amount >= 1000
+                        ? "1000"
+                        : amount >= 500
+                          ? "500"
+                          : amount >= 200
+                            ? "200"
+                            : "100";
+        return {
+          text: text.replace(/^\[SC:\d+\]\s*/i, "").replace(/^\/sc\d+\s+/i, ""),
+          superchat: { amount, band }
+        };
+      };
+
       const appendMessage = (payload) => {
         const card = document.createElement("div");
         card.className = "message";
+        const parsed = parseSuperchatText(payload.text || "");
+        const superchat = payload.superchat || parsed.superchat;
+        const messageText = parsed.text;
+        if (superchat) {
+          card.classList.add("superchat");
+          card.dataset.band = superchat.band || "100";
+        }
 
         const header = document.createElement("div");
         header.className = "message-header";
 
+        const nameWrap = document.createElement("div");
+        nameWrap.className = "message-meta";
+
         const name = document.createElement("strong");
         name.textContent = payload.name || "guest";
+        nameWrap.appendChild(name);
+
+        if (superchat) {
+          const chip = document.createElement("span");
+          chip.className = "superchip";
+          chip.textContent = `Superchat ¥${superchat.amount}`;
+          nameWrap.appendChild(chip);
+        }
 
         const time = document.createElement("span");
         time.textContent = formatTime(payload.at);
 
-        header.appendChild(name);
-        header.appendChild(time);
+        const meta = document.createElement("div");
+        meta.className = "message-meta";
+        meta.appendChild(time);
+
+        header.appendChild(nameWrap);
+        header.appendChild(meta);
 
         const body = document.createElement("div");
-        body.textContent = payload.text || "";
+        body.textContent = messageText;
 
         card.appendChild(header);
         card.appendChild(body);
@@ -316,10 +435,13 @@
           return;
         }
 
-        socket.send(JSON.stringify({ name, text }));
+        const payload = { name, text };
+
+        socket.send(JSON.stringify(payload));
         textInput.value = "";
         sendHint.textContent = "";
       };
+
 
       textInput.addEventListener("keydown", (event) => {
         if (isViewMode) return;
