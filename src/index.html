@@ -296,25 +296,29 @@
       </section>
     </div>
     <canvas class="emoji-canvas" id="emoji-canvas" aria-hidden="true"></canvas>
-
     <script>
       const ENDPOINT = "wss://websocket-server-on-heroku-ec91325c1c49.herokuapp.com/";
 
-      const messages = document.getElementById("messages");
-      const emojiCanvas = document.getElementById("emoji-canvas");
-      const nameInput = document.getElementById("name");
-      const textInput = document.getElementById("text");
-      const reactions = document.getElementById("reactions");
+      const elements = {
+        messages: document.getElementById("messages"),
+        emojiCanvas: document.getElementById("emoji-canvas"),
+        nameInput: document.getElementById("name"),
+        textInput: document.getElementById("text"),
+        reactions: document.getElementById("reactions")
+      };
 
-      let socket = null;
-      let isComposing = false;
-      let emojiParticles = [];
-      let emojiAnimation = null;
-      let lastEmojiFrame = 0;
+      const state = {
+        socket: null,
+        isComposing: false,
+        emojiParticles: [],
+        emojiAnimation: null,
+        lastEmojiFrame: 0
+      };
+
       const EMOJI_SIZES = [24, 28, 32, 36, 40];
       const emojiCache = new Map();
       const emojiMeasure = document.createElement("canvas").getContext("2d");
-      const emojiCtx = emojiCanvas.getContext("2d");
+      const emojiCtx = elements.emojiCanvas.getContext("2d");
       const urlParams = new URLSearchParams(window.location.search);
       const isViewMode = urlParams.get("mode") === "view";
 
@@ -370,12 +374,21 @@
         };
       };
 
+      const parseEmojiCommand = (rawText) => {
+        const text = String(rawText);
+        const match = text.match(/^\/e\s+(.+)$/i);
+        if (!match) return null;
+        const emoji = match[1].trim();
+        if (!emoji) return null;
+        return emoji;
+      };
+
       const resizeEmojiCanvas = () => {
         const dpr = window.devicePixelRatio || 1;
-        emojiCanvas.style.width = "100vw";
-        emojiCanvas.style.height = "100vh";
-        emojiCanvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
-        emojiCanvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+        elements.emojiCanvas.style.width = "100vw";
+        elements.emojiCanvas.style.height = "100vh";
+        elements.emojiCanvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+        elements.emojiCanvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
         emojiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         emojiCtx.textBaseline = "bottom";
         emojiCtx.textAlign = "center";
@@ -405,22 +418,22 @@
       };
 
       const renderEmojis = (timestamp) => {
-        if (!lastEmojiFrame) lastEmojiFrame = timestamp;
-        const elapsed = timestamp - lastEmojiFrame;
+        if (!state.lastEmojiFrame) state.lastEmojiFrame = timestamp;
+        const elapsed = timestamp - state.lastEmojiFrame;
         if (elapsed < 33) {
-          emojiAnimation = requestAnimationFrame(renderEmojis);
+          state.emojiAnimation = requestAnimationFrame(renderEmojis);
           return;
         }
         const delta = elapsed / 1000;
-        lastEmojiFrame = timestamp;
+        state.lastEmojiFrame = timestamp;
 
         const width = window.innerWidth;
         const height = window.innerHeight;
         emojiCtx.clearRect(0, 0, width, height);
 
         let writeIndex = 0;
-        for (let i = 0; i < emojiParticles.length; i += 1) {
-          const particle = emojiParticles[i];
+        for (let i = 0; i < state.emojiParticles.length; i += 1) {
+          const particle = state.emojiParticles[i];
           particle.age += delta * 1000;
           particle.y += particle.vy * delta;
           const progress = particle.age / particle.life;
@@ -441,28 +454,19 @@
             particle.y - sprite.height
           );
 
-          emojiParticles[writeIndex] = particle;
+          state.emojiParticles[writeIndex] = particle;
           writeIndex += 1;
         }
-        emojiParticles.length = writeIndex;
+        state.emojiParticles.length = writeIndex;
 
         emojiCtx.globalAlpha = 1;
 
-        if (emojiParticles.length > 0) {
-          emojiAnimation = requestAnimationFrame(renderEmojis);
+        if (state.emojiParticles.length > 0) {
+          state.emojiAnimation = requestAnimationFrame(renderEmojis);
         } else {
-          emojiAnimation = null;
-          lastEmojiFrame = 0;
+          state.emojiAnimation = null;
+          state.lastEmojiFrame = 0;
         }
-      };
-
-      const parseEmojiCommand = (rawText) => {
-        const text = String(rawText);
-        const match = text.match(/^\/e\s+(.+)$/i);
-        if (!match) return null;
-        const emoji = match[1].trim();
-        if (!emoji) return null;
-        return emoji;
       };
 
       const launchEmoji = (emoji) => {
@@ -471,7 +475,7 @@
         const x = Math.round(width * (0.1 + Math.random() * 0.8));
         const y = height - 90;
         const sprites = EMOJI_SIZES.map((size) => getEmojiSprite(emoji, size));
-        emojiParticles.push({
+        state.emojiParticles.push({
           emoji,
           x,
           y,
@@ -481,9 +485,9 @@
           life: 3500 + Math.random() * 800
         });
 
-        if (!emojiAnimation) {
-          lastEmojiFrame = 0;
-          emojiAnimation = requestAnimationFrame(renderEmojis);
+        if (!state.emojiAnimation) {
+          state.lastEmojiFrame = 0;
+          state.emojiAnimation = requestAnimationFrame(renderEmojis);
         }
       };
 
@@ -536,9 +540,9 @@
 
         card.appendChild(header);
         card.appendChild(body);
-        messages.appendChild(card);
+        elements.messages.appendChild(card);
         requestAnimationFrame(() => {
-          messages.scrollTop = messages.scrollHeight;
+          elements.messages.scrollTop = elements.messages.scrollHeight;
         });
       };
 
@@ -553,7 +557,7 @@
         if (!payload || typeof payload !== "object") return;
 
         if (payload.type === "backlog" && Array.isArray(payload.messages)) {
-          messages.innerHTML = "";
+          elements.messages.innerHTML = "";
           payload.messages.forEach(appendMessage);
           return;
         }
@@ -564,71 +568,59 @@
       };
 
       const connect = () => {
-        if (socket && socket.readyState === WebSocket.OPEN) return;
-        socket = new WebSocket(ENDPOINT);
-
-        socket.addEventListener("open", () => {
-        });
-
-        socket.addEventListener("close", () => {
-        });
-
-        socket.addEventListener("error", () => {
-        });
-
-        socket.addEventListener("message", handleMessage);
+        if (state.socket && state.socket.readyState === WebSocket.OPEN) return;
+        state.socket = new WebSocket(ENDPOINT);
+        state.socket.addEventListener("message", handleMessage);
       };
 
       const sendMessage = () => {
         if (isViewMode) return;
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
+        if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        const name = nameInput.value.trim() || "guest";
-        const text = textInput.value.trim();
+        const name = elements.nameInput.value.trim() || "guest";
+        const text = elements.textInput.value.trim();
 
         if (!text) {
           return;
         }
 
         const payload = { name, text };
-
-        socket.send(JSON.stringify(payload));
-        textInput.value = "";
+        state.socket.send(JSON.stringify(payload));
+        elements.textInput.value = "";
       };
 
       const sendEmoji = (emoji) => {
         if (isViewMode) return;
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
+        if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        socket.send(JSON.stringify({ name: "guest", text: `/e ${emoji}` }));
+        state.socket.send(JSON.stringify({ name: "guest", text: `/e ${emoji}` }));
       };
 
-
-      textInput.addEventListener("keydown", (event) => {
+      elements.textInput.addEventListener("keydown", (event) => {
         if (isViewMode) return;
         if (event.key === "Enter" && !event.shiftKey) {
-          if (isComposing) return;
+          if (state.isComposing) return;
           event.preventDefault();
           sendMessage();
         }
       });
 
       if (!isViewMode) {
-        textInput.addEventListener("compositionstart", () => {
-          isComposing = true;
+        elements.textInput.addEventListener("compositionstart", () => {
+          state.isComposing = true;
         });
 
-        textInput.addEventListener("compositionend", () => {
-          isComposing = false;
+        elements.textInput.addEventListener("compositionend", () => {
+          state.isComposing = false;
         });
       }
 
-      if (reactions) {
-        reactions.addEventListener("click", (event) => {
+      if (elements.reactions) {
+        elements.reactions.addEventListener("click", (event) => {
           const button = event.target.closest("button[data-emoji]");
           if (!button) return;
           sendEmoji(button.dataset.emoji);
@@ -636,15 +628,15 @@
       }
 
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden && emojiAnimation) {
-          cancelAnimationFrame(emojiAnimation);
-          emojiAnimation = null;
-          lastEmojiFrame = 0;
+        if (document.hidden && state.emojiAnimation) {
+          cancelAnimationFrame(state.emojiAnimation);
+          state.emojiAnimation = null;
+          state.lastEmojiFrame = 0;
           return;
         }
 
-        if (!document.hidden && emojiParticles.length > 0 && !emojiAnimation) {
-          emojiAnimation = requestAnimationFrame(renderEmojis);
+        if (!document.hidden && state.emojiParticles.length > 0 && !state.emojiAnimation) {
+          state.emojiAnimation = requestAnimationFrame(renderEmojis);
         }
       });
 
@@ -652,5 +644,5 @@
       resizeEmojiCanvas();
       connect();
     </script>
-  </body>
+</body>
 </html>
