@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebSocket Lounge</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=Spline+Sans+Mono:wght@400;600&display=swap");
+
+      :root {
+        --ink: #0f172a;
+        --paper: #f8fafc;
+        --accent: #ff6b35;
+        --accent-2: #2ec4b6;
+        --card: rgba(255, 255, 255, 0.78);
+        --shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: transparent;
+        min-height: 100vh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        padding: 32px;
+        overflow: hidden;
+      }
+
+      .shell {
+        width: min(980px, 100%);
+        display: grid;
+        gap: 24px;
+        height: calc(100vh - 64px);
+      }
+
+      .panel {
+        background: var(--card);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+        overflow: hidden;
+      }
+
+      header h1 {
+        margin: 0 0 8px 0;
+        font-size: clamp(26px, 4vw, 36px);
+        letter-spacing: -0.02em;
+      }
+
+      header p {
+        margin: 0;
+        color: rgba(15, 23, 42, 0.7);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: "Spline Sans Mono", monospace;
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #cbd5f5;
+      }
+
+      .status-dot.online {
+        background: #22c55e;
+      }
+
+      .stat {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 18px;
+        font-size: 14px;
+        color: rgba(15, 23, 42, 0.7);
+      }
+
+      .stat strong {
+        color: var(--ink);
+      }
+
+      .panel-chat {
+        display: flex;
+        flex-direction: column;
+        min-height: 70vh;
+        height: 100%;
+      }
+
+      .messages {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow: auto;
+        padding-right: 6px;
+        flex: 1;
+        min-height: 0;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .messages::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+      }
+
+      .message {
+        background: white;
+        border-radius: 16px;
+        padding: 14px 16px;
+        box-shadow: 0 12px 20px rgba(15, 23, 42, 0.08);
+      }
+
+      .message-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: rgba(15, 23, 42, 0.6);
+        margin-bottom: 6px;
+      }
+
+      .message strong {
+        color: var(--ink);
+      }
+
+      .composer {
+        display: grid;
+        gap: 12px;
+        position: sticky;
+        bottom: 0;
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.7), rgba(248, 250, 252, 0.95));
+        padding-top: 16px;
+      }
+
+      .composer label {
+        font-size: 13px;
+        color: rgba(15, 23, 42, 0.6);
+      }
+
+      .composer input,
+      .composer textarea {
+        width: 100%;
+        border: 1px solid rgba(15, 23, 42, 0.15);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-family: inherit;
+        font-size: 14px;
+        background: white;
+      }
+
+      .composer textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .hint {
+        font-family: "Spline Sans Mono", monospace;
+        font-size: 12px;
+        color: rgba(15, 23, 42, 0.55);
+      }
+
+      @media (max-width: 900px) {
+        body {
+          padding: 20px;
+        }
+
+        .shell {
+          height: calc(100vh - 40px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="panel panel-chat">
+        <div class="messages" id="messages"></div>
+        <div class="composer">
+          <div>
+            <label for="name">Display name</label>
+            <input id="name" type="text" maxlength="40" placeholder="guest" />
+          </div>
+          <div>
+            <label for="text">Message</label>
+            <textarea id="text" maxlength="2000" placeholder="Say hello" autofocus></textarea>
+          </div>
+          <div class="actions">
+            <span class="hint" id="send-hint">Enter to send, Shift+Enter for newline</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const ENDPOINT = "wss://websocket-server-on-heroku-ec91325c1c49.herokuapp.com/";
+
+      const messages = document.getElementById("messages");
+      const nameInput = document.getElementById("name");
+      const textInput = document.getElementById("text");
+      const sendHint = document.getElementById("send-hint");
+
+      let socket = null;
+      let isComposing = false;
+      const urlParams = new URLSearchParams(window.location.search);
+      const isViewMode = urlParams.get("mode") === "view";
+
+      if (isViewMode) {
+        const composer = document.querySelector(".composer");
+        if (composer) composer.style.display = "none";
+      }
+
+      const formatTime = (isoString) => {
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) return "";
+        return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      };
+
+      const appendMessage = (payload) => {
+        const card = document.createElement("div");
+        card.className = "message";
+
+        const header = document.createElement("div");
+        header.className = "message-header";
+
+        const name = document.createElement("strong");
+        name.textContent = payload.name || "guest";
+
+        const time = document.createElement("span");
+        time.textContent = formatTime(payload.at);
+
+        header.appendChild(name);
+        header.appendChild(time);
+
+        const body = document.createElement("div");
+        body.textContent = payload.text || "";
+
+        card.appendChild(header);
+        card.appendChild(body);
+        messages.appendChild(card);
+        requestAnimationFrame(() => {
+          messages.scrollTop = messages.scrollHeight;
+        });
+      };
+
+      const handleMessage = (event) => {
+        let payload = null;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (_error) {
+          return;
+        }
+
+        if (!payload || typeof payload !== "object") return;
+
+        if (payload.type === "backlog" && Array.isArray(payload.messages)) {
+          messages.innerHTML = "";
+          payload.messages.forEach(appendMessage);
+          return;
+        }
+
+        if (payload.type === "message") {
+          appendMessage(payload);
+        }
+      };
+
+      const connect = () => {
+        if (socket && socket.readyState === WebSocket.OPEN) return;
+        socket = new WebSocket(ENDPOINT);
+
+        socket.addEventListener("open", () => {
+          sendHint.textContent = "";
+        });
+
+        socket.addEventListener("close", () => {
+        });
+
+        socket.addEventListener("error", () => {
+          sendHint.textContent = "Connection error";
+        });
+
+        socket.addEventListener("message", handleMessage);
+      };
+
+      const sendMessage = () => {
+        if (isViewMode) return;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          sendHint.textContent = "Not connected";
+          return;
+        }
+
+        const name = nameInput.value.trim() || "guest";
+        const text = textInput.value.trim();
+
+        if (!text) {
+          sendHint.textContent = "Message is empty";
+          return;
+        }
+
+        socket.send(JSON.stringify({ name, text }));
+        textInput.value = "";
+        sendHint.textContent = "";
+      };
+
+      textInput.addEventListener("keydown", (event) => {
+        if (isViewMode) return;
+        if (event.key === "Enter" && !event.shiftKey) {
+          if (isComposing) return;
+          event.preventDefault();
+          sendMessage();
+        }
+      });
+
+      if (!isViewMode) {
+        textInput.addEventListener("compositionstart", () => {
+          isComposing = true;
+        });
+
+        textInput.addEventListener("compositionend", () => {
+          isComposing = false;
+        });
+      }
+
+      connect();
+    </script>
+  </body>
+</html>
