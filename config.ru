@@ -56,6 +56,18 @@ app = lambda do |env|
       next if name.length > 40
       next if text.length > 2000
 
+      if text.match?(/^\/e\s+.+/i)
+        message = {
+          type: "message",
+          id: SecureRandom.uuid,
+          at: Time.now.utc.iso8601,
+          name: name,
+          text: text
+        }
+        broadcast(message)
+        next
+      end
+
       message = {
         type: "message",
         id: SecureRandom.uuid,
