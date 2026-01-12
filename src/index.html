@@ -291,7 +291,6 @@
             <textarea id="text" maxlength="2000" placeholder="Say hello" autofocus></textarea>
           </div>
           <div class="actions">
-            <span class="hint" id="send-hint">Enter to send, Shift+Enter for newline</span>
           </div>
         </div>
       </section>
@@ -305,7 +304,6 @@
       const emojiCanvas = document.getElementById("emoji-canvas");
       const nameInput = document.getElementById("name");
       const textInput = document.getElementById("text");
-      const sendHint = document.getElementById("send-hint");
       const reactions = document.getElementById("reactions");
 
       let socket = null;
@@ -570,14 +568,12 @@
         socket = new WebSocket(ENDPOINT);
 
         socket.addEventListener("open", () => {
-          sendHint.textContent = "";
         });
 
         socket.addEventListener("close", () => {
         });
 
         socket.addEventListener("error", () => {
-          sendHint.textContent = "Connection error";
         });
 
         socket.addEventListener("message", handleMessage);
@@ -586,7 +582,6 @@
       const sendMessage = () => {
         if (isViewMode) return;
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-          sendHint.textContent = "Not connected";
           return;
         }
 
@@ -594,7 +589,6 @@
         const text = textInput.value.trim();
 
         if (!text) {
-          sendHint.textContent = "Message is empty";
           return;
         }
 
@@ -602,13 +596,11 @@
 
         socket.send(JSON.stringify(payload));
         textInput.value = "";
-        sendHint.textContent = "";
       };
 
       const sendEmoji = (emoji) => {
         if (isViewMode) return;
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-          sendHint.textContent = "Not connected";
           return;
         }
 
