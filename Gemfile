@@ -1,0 +1,7 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gem "faye-websocket", "~> 0.11"
+gem "puma", "~> 6.0"
+gem "rack", "~> 3.0"
