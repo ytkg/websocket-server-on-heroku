@@ -3,5 +3,5 @@
 source "https://rubygems.org"
 
 gem "faye-websocket", "~> 0.11"
-gem "puma", "~> 6.0"
+gem "puma"
 gem "rack", "~> 3.0"
